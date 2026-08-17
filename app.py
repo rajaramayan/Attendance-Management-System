@@ -175,7 +175,14 @@ if menu == "📊 Dashboard Overview":
                 
                 # Plot Attendance Percentage by Course
                 df_course_avg = df_summary.groupby(["course_code", "course_name"])["attendance_pct"].mean().reset_index()
-                st.bar_chart(data=df_course_avg, x="course_code", y="attendance_pct", use_container_width=True)
+                st.bar_chart(
+                    data=df_course_avg,
+                    x="course_code",
+                    y="attendance_pct",
+                    x_label="Course Code",
+                    y_label="Attendance (%)",
+                    use_container_width=True
+                )
 
                 st.subheader("📋 Student Attendance Summary")
                 st.dataframe(df_summary, use_container_width=True)
