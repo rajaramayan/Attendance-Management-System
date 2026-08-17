@@ -12,7 +12,8 @@ A comprehensive Attendance Management System built with Python, MySQL, Tkinter G
 ## 📁 Repository Structure
 
 ```
-├── attendance_report.py        # Streamlit web reporting app
+├── app.py                     # Main Streamlit web application
+├── attendance_report.py        # PDF & CSV reporting library
 ├── main_app.py                # Main Tkinter desktop application
 ├── student_form.py            # Student management form interface
 ├── db_config.py               # Centralized MySQL connection handler
@@ -58,8 +59,8 @@ A comprehensive Attendance Management System built with Python, MySQL, Tkinter G
    ```
 
 5. **Run Applications**:
+   - **Streamlit Web Dashboard**: `streamlit run app.py`
    - **Desktop App**: `python main_app.py`
-   - **Streamlit Web Dashboard**: `streamlit run attendance_report.py`
 
 ## 📜 License
 
