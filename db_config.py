@@ -1,6 +1,12 @@
 import os
 import mysql.connector
-from mysql.connector.errors import Error
+try:
+    from mysql.connector import Error
+except ImportError:
+    try:
+        from mysql.connector.errors import Error
+    except ImportError:
+        Error = Exception
 import streamlit as st
 
 
