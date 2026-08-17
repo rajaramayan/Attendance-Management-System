@@ -257,7 +257,7 @@ if not st.session_state["logged_in"]:
 def fetch_departments():
     try:
         conn = get_connection()
-        df = pd.read_sql("SELECT dept_id, dept_name, code FROM department ORDER BY dept_name", conn)
+        df = pd.read_sql("SELECT dept_id, dept_name, dept_code FROM department ORDER BY dept_name", conn)
         conn.close()
         return df
     except Exception:
@@ -286,7 +286,7 @@ def fetch_students():
     try:
         conn = get_connection()
         query = """
-            SELECT s.student_id, s.roll_no, s.name, s.email, s.semester, d.dept_name
+            SELECT s.student_id, s.roll_no, s.name, s.email, s.phone, d.dept_name
             FROM student s
             LEFT JOIN department d ON s.dept_id = d.dept_id
             ORDER BY s.roll_no
@@ -471,7 +471,7 @@ with tab_dept:
                         try:
                             conn = get_connection()
                             cur = conn.cursor()
-                            cur.execute("INSERT INTO department (dept_name, code) VALUES (%s, %s)", (d_name, d_code))
+                            cur.execute("INSERT INTO department (dept_name, dept_code) VALUES (%s, %s)", (d_name, d_code))
                             conn.commit()
                             conn.close()
                             st.success(f"Department '{d_name}' added successfully!")
@@ -496,7 +496,7 @@ with tab_stud:
                 r_no = st.text_input("Roll Number (e.g. CS104)")
                 s_name = st.text_input("Student Full Name")
                 s_email = st.text_input("Email Address")
-                s_sem = st.selectbox("Semester", [1, 2, 3, 4, 5, 6, 7, 8])
+                s_phone = st.text_input("Phone Number")
                 
                 dept_df = fetch_departments()
                 d_map = {row['dept_name']: row['dept_id'] for _, row in dept_df.iterrows()} if not dept_df.empty else {}
@@ -508,8 +508,8 @@ with tab_stud:
                             conn = get_connection()
                             cur = conn.cursor()
                             cur.execute(
-                                "INSERT INTO student (roll_no, name, email, semester, dept_id) VALUES (%s, %s, %s, %s, %s)",
-                                (r_no, s_name, s_email, s_sem, d_map.get(s_dept))
+                                "INSERT INTO student (roll_no, name, email, phone, dept_id) VALUES (%s, %s, %s, %s, %s)",
+                                (r_no, s_name, s_email, s_phone, d_map.get(s_dept))
                             )
                             conn.commit()
                             conn.close()
