@@ -28,6 +28,17 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
+# ── Session State Initialisation ─────────────────────────────────────────────
+if "logged_in" not in st.session_state:
+    st.session_state["logged_in"] = False
+if "current_user" not in st.session_state:
+    st.session_state["current_user"] = ""
+if "current_role" not in st.session_state:
+    st.session_state["current_role"] = ""
+# Stored admin credentials (changeable at runtime)
+if "admin_password" not in st.session_state:
+    st.session_state["admin_password"] = "admin123"
+
 # ── Custom CSS Styling (Dark/Navy header theme matching main_app.py) ──────────
 st.markdown("""
     <style>
@@ -81,6 +92,108 @@ st.markdown("""
     }
     </style>
 """, unsafe_allow_html=True)
+
+
+# ── Login Page ───────────────────────────────────────────────────────────────
+def show_login_page():
+    st.markdown("""
+        <style>
+        .login-wrapper {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 75vh;
+        }
+        .login-card {
+            background: linear-gradient(135deg, #1E293B 0%, #0F172A 100%);
+            border: 1px solid #334155;
+            border-radius: 16px;
+            padding: 48px 40px;
+            width: 100%;
+            max-width: 420px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+        }
+        .login-logo {
+            font-size: 3rem;
+            text-align: center;
+            margin-bottom: 8px;
+        }
+        .login-title {
+            text-align: center;
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #F8FAFC;
+            margin-bottom: 4px;
+        }
+        .login-subtitle {
+            text-align: center;
+            font-size: 0.85rem;
+            color: #94A3B8;
+            margin-bottom: 32px;
+        }
+        div[data-testid="stForm"] {
+            background: transparent;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+
+    _, center, _ = st.columns([1, 1.6, 1])
+    with center:
+        st.markdown('<div class="login-logo">🎓</div>', unsafe_allow_html=True)
+        st.markdown('<div class="login-title">College Attendance System</div>', unsafe_allow_html=True)
+        st.markdown('<div class="login-subtitle">Sign in to continue</div>', unsafe_allow_html=True)
+
+        with st.form("login_form", clear_on_submit=False):
+            username = st.text_input("Username", placeholder="Enter username", label_visibility="visible")
+            password = st.text_input("Password", type="password", placeholder="Enter password", label_visibility="visible")
+            submitted = st.form_submit_button("🔐 Sign In", use_container_width=True)
+
+        if submitted:
+            # Validate against DB teachers table OR admin account
+            if username == "admin" and password == st.session_state["admin_password"]:
+                st.session_state["logged_in"] = True
+                st.session_state["current_user"] = "admin"
+                st.session_state["current_role"] = "Admin"
+                st.rerun()
+            else:
+                # Check teacher credentials in DB
+                try:
+                    conn = get_connection()
+                    cur = get_cursor(conn, dictionary=True)
+                    cur.execute(
+                        "SELECT teacher_id, name, teacher_code FROM teacher WHERE teacher_code = %s AND password = %s",
+                        (username, password)
+                    )
+                    teacher = cur.fetchone()
+                    cur.close(); conn.close()
+                    if teacher:
+                        st.session_state["logged_in"] = True
+                        st.session_state["current_user"] = teacher["name"]
+                        st.session_state["current_role"] = "Teacher"
+                        st.rerun()
+                    else:
+                        st.error("❌ Invalid username or password. Please try again.")
+                except Exception:
+                    # DB check failed — only allow admin fallback
+                    if username == "admin" and password == st.session_state["admin_password"]:
+                        st.session_state["logged_in"] = True
+                        st.session_state["current_user"] = "admin"
+                        st.session_state["current_role"] = "Admin"
+                        st.rerun()
+                    else:
+                        st.error("❌ Invalid username or password.")
+
+        st.markdown("""
+            <div style="text-align:center; margin-top:24px; color:#475569; font-size:0.8rem;">
+                Default admin: <b style='color:#94A3B8'>admin</b> / <b style='color:#94A3B8'>admin123</b>
+            </div>
+        """, unsafe_allow_html=True)
+
+
+# ── Auth Gate ─────────────────────────────────────────────────────────────────
+if not st.session_state["logged_in"]:
+    show_login_page()
+    st.stop()
 
 
 # ── DB Data Helpers ───────────────────────────────────────────────────────────
@@ -148,16 +261,16 @@ def fetch_courses():
 
 
 # ── Top Bar Header ────────────────────────────────────────────────────────────
-head_col1, head_col2, head_col3 = st.columns([3, 1, 1])
+head_col1, head_col2, head_col3, head_col4 = st.columns([3, 1, 1, 0.8])
 with head_col1:
     st.markdown("""
         <div class="top-header">
             <div>
-                <div class="top-title">🎓 College Attendance System</div>
+                <div class="top-title">&#127891; College Attendance System</div>
                 <div class="top-sub">System Date: """ + datetime.now().strftime("%A, %d %B %Y") + """</div>
             </div>
             <div style="font-size:0.9rem; color:#CBD5E1;">
-                👤 Logged in as: <b>admin (Admin)</b>
+                &#128100; Logged in as: <b>""" + st.session_state["current_user"] + """ (""" + st.session_state["current_role"] + """)</b>
             </div>
         </div>
     """, unsafe_allow_html=True)
@@ -180,6 +293,13 @@ with head_col3:
     if st.button("🔑 Change Password", use_container_width=True):
         st.session_state["show_pw_dialog"] = True
 
+with head_col4:
+    if st.button("🚪 Logout", use_container_width=True, type="secondary"):
+        st.session_state["logged_in"] = False
+        st.session_state["current_user"] = ""
+        st.session_state["current_role"] = ""
+        st.rerun()
+
 if st.session_state.get("show_pw_dialog"):
     with st.expander("🔐 Change Password Form", expanded=True):
         with st.form("pw_change_form"):
@@ -187,11 +307,14 @@ if st.session_state.get("show_pw_dialog"):
             new_pw = st.text_input("New Password", type="password")
             confirm_pw = st.text_input("Confirm New Password", type="password")
             if st.form_submit_button("Update Password"):
-                if new_pw != confirm_pw:
+                if curr_pw != st.session_state["admin_password"]:
+                    st.error("Current password is incorrect.")
+                elif new_pw != confirm_pw:
                     st.error("New passwords do not match.")
                 elif len(new_pw) < 6:
                     st.error("Password must be at least 6 characters.")
                 else:
+                    st.session_state["admin_password"] = new_pw
                     st.success("Password updated successfully!")
                     st.session_state["show_pw_dialog"] = False
 
