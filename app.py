@@ -28,16 +28,15 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
+import auth
+
 # ── Session State Initialisation ─────────────────────────────────────────────
-if "logged_in" not in st.session_state:
-    st.session_state["logged_in"] = False
-if "current_user" not in st.session_state:
-    st.session_state["current_user"] = ""
-if "current_role" not in st.session_state:
-    st.session_state["current_role"] = ""
-# Stored admin credentials (changeable at runtime)
-if "admin_password" not in st.session_state:
-    st.session_state["admin_password"] = "admin123"
+for _k, _v in [("logged_in", False), ("current_user", ""), ("current_role", ""),
+               ("user_id", None), ("teacher_id", None), ("student_id", None),
+               ("show_pw_dialog", False), ("auth_page", "login"),
+               ("admin_setup_done", None), ("generated_pw", "")]:
+    if _k not in st.session_state:
+        st.session_state[_k] = _v
 
 # ── Custom CSS Styling (Dark/Navy header theme matching main_app.py) ──────────
 st.markdown("""
@@ -94,105 +93,162 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
-# ── Login Page ───────────────────────────────────────────────────────────────
-def show_login_page():
+# ── Auth Pages ──────────────────────────────────────────────────────────────────
+def _auth_css():
     st.markdown("""
-        <style>
-        .login-wrapper {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 75vh;
-        }
-        .login-card {
-            background: linear-gradient(135deg, #1E293B 0%, #0F172A 100%);
-            border: 1px solid #334155;
-            border-radius: 16px;
-            padding: 48px 40px;
-            width: 100%;
-            max-width: 420px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.4);
-        }
-        .login-logo {
-            font-size: 3rem;
-            text-align: center;
-            margin-bottom: 8px;
-        }
-        .login-title {
-            text-align: center;
-            font-size: 1.5rem;
-            font-weight: 700;
-            color: #F8FAFC;
-            margin-bottom: 4px;
-        }
-        .login-subtitle {
-            text-align: center;
-            font-size: 0.85rem;
-            color: #94A3B8;
-            margin-bottom: 32px;
-        }
-        div[data-testid="stForm"] {
-            background: transparent;
-        }
-        </style>
+    <style>
+    .auth-logo { font-size:3rem; text-align:center; margin-bottom:6px; }
+    .auth-title { text-align:center; font-size:1.45rem; font-weight:700;
+                  color:#F8FAFC; margin-bottom:4px; }
+    .auth-sub   { text-align:center; font-size:0.85rem; color:#94A3B8;
+                  margin-bottom:24px; }
+    .pw-box { background:#0F172A; border:1px solid #1E3A5F; border-radius:10px;
+              padding:18px 22px; margin-top:12px; }
+    .pw-label { color:#94A3B8; font-size:0.8rem; margin-bottom:4px; }
+    .pw-value { color:#38BDF8; font-size:1.4rem; font-weight:700;
+                letter-spacing:2px; font-family:monospace; }
+    </style>
     """, unsafe_allow_html=True)
 
-    _, center, _ = st.columns([1, 1.6, 1])
-    with center:
-        st.markdown('<div class="login-logo">🎓</div>', unsafe_allow_html=True)
-        st.markdown('<div class="login-title">College Attendance System</div>', unsafe_allow_html=True)
-        st.markdown('<div class="login-subtitle">Sign in to continue</div>', unsafe_allow_html=True)
 
-        with st.form("login_form", clear_on_submit=False):
-            username = st.text_input("Username", placeholder="Enter username", label_visibility="visible")
-            password = st.text_input("Password", type="password", placeholder="Enter password", label_visibility="visible")
-            submitted = st.form_submit_button("🔐 Sign In", use_container_width=True)
+def show_admin_setup():
+    """First-run page: generate and display admin password once."""
+    _auth_css()
+    _, col, _ = st.columns([1, 1.6, 1])
+    with col:
+        st.markdown('<div class="auth-logo">&#127891;</div>', unsafe_allow_html=True)
+        st.markdown('<div class="auth-title">Admin Account Setup</div>', unsafe_allow_html=True)
+        st.markdown('<div class="auth-sub">No admin account found &mdash; create one now</div>',
+                    unsafe_allow_html=True)
+
+        if not st.session_state["generated_pw"]:
+            st.session_state["generated_pw"] = auth.generate_password(14)
+
+        gen_pw = st.session_state["generated_pw"]
+
+        st.markdown(f"""
+        <div class="pw-box">
+          <div class="pw-label">&#128274; Auto-generated admin password &mdash; save this now!</div>
+          <div class="pw-value">{gen_pw}</div>
+          <div class="pw-label" style="margin-top:8px;color:#F59E0B;">
+            This password will NOT be shown again after you click Create.
+          </div>
+        </div>""", unsafe_allow_html=True)
+
+        st.markdown("")
+        with st.form("admin_setup_form"):
+            admin_user = st.text_input("Choose admin username", value="admin")
+            use_custom = st.checkbox("Set my own password instead")
+            custom_pw = st.text_input("Custom password (min 8 chars)", type="password",
+                                      disabled=not use_custom)
+            submitted = st.form_submit_button("&#10003; Create Admin Account", use_container_width=True)
 
         if submitted:
-            # Validate against DB teachers table OR admin account
-            if username == "admin" and password == st.session_state["admin_password"]:
-                st.session_state["logged_in"] = True
-                st.session_state["current_user"] = "admin"
-                st.session_state["current_role"] = "Admin"
-                st.rerun()
+            final_pw = custom_pw if use_custom else gen_pw
+            if use_custom and len(final_pw) < 8:
+                st.error("Password must be at least 8 characters.")
+            elif not admin_user.strip():
+                st.error("Username cannot be empty.")
             else:
-                # Check teacher credentials in DB
-                try:
-                    conn = get_connection()
-                    cur = get_cursor(conn, dictionary=True)
-                    cur.execute(
-                        "SELECT teacher_id, name, teacher_code FROM teacher WHERE teacher_code = %s AND password = %s",
-                        (username, password)
-                    )
-                    teacher = cur.fetchone()
-                    cur.close(); conn.close()
-                    if teacher:
-                        st.session_state["logged_in"] = True
-                        st.session_state["current_user"] = teacher["name"]
-                        st.session_state["current_role"] = "Teacher"
-                        st.rerun()
+                ok = auth.create_admin(admin_user.strip(), final_pw)
+                if ok:
+                    st.session_state["admin_setup_done"] = True
+                    st.success("Admin account created! Please sign in.")
+                    st.session_state["auth_page"] = "login"
+                    st.session_state["generated_pw"] = ""
+                    st.rerun()
+                else:
+                    st.error("Failed to create admin. Username may already exist.")
+
+
+def show_login_page():
+    """Login + Signup tabs."""
+    _auth_css()
+    _, col, _ = st.columns([1, 1.6, 1])
+    with col:
+        st.markdown('<div class="auth-logo">&#127891;</div>', unsafe_allow_html=True)
+        st.markdown('<div class="auth-title">College Attendance System</div>', unsafe_allow_html=True)
+
+        tab_login, tab_teacher_signup, tab_student_signup = st.tabs(
+            ["&#128274; Sign In", "&#128203; Teacher Sign Up", "&#127891; Student Sign Up"]
+        )
+
+        # ── Sign In ──────────────────────────────────────────────────────────
+        with tab_login:
+            with st.form("login_form", clear_on_submit=False):
+                username = st.text_input("Username", placeholder="Enter username")
+                password = st.text_input("Password", type="password", placeholder="Enter password")
+                submitted = st.form_submit_button("&#128274; Sign In", use_container_width=True)
+
+            if submitted:
+                result = auth.login(username.strip(), password)
+                if result:
+                    st.session_state["logged_in"] = True
+                    st.session_state["current_user"] = result["display_name"]
+                    st.session_state["current_role"] = result["role"]
+                    st.session_state["user_id"] = result["user_id"]
+                    st.session_state["teacher_id"] = result["teacher_id"]
+                    st.session_state["student_id"] = result["student_id"]
+                    st.rerun()
+                else:
+                    st.error("&#10060; Invalid username or password.")
+
+        # ── Teacher Sign Up ──────────────────────────────────────────────────
+        with tab_teacher_signup:
+            st.caption("Already registered as a teacher? Create your login account here.")
+            with st.form("teacher_signup_form", clear_on_submit=True):
+                t_code  = st.text_input("Your Teacher Code (given by admin)",
+                                        placeholder="e.g. TCH001")
+                t_user  = st.text_input("Choose a Username", placeholder="e.g. rajesh_kumar")
+                t_pass  = st.text_input("Password (min 8 chars)", type="password")
+                t_pass2 = st.text_input("Confirm Password", type="password")
+                t_sub   = st.form_submit_button("&#128203; Create Teacher Account",
+                                                use_container_width=True)
+            if t_sub:
+                if len(t_pass) < 8:
+                    st.error("Password must be at least 8 characters.")
+                elif t_pass != t_pass2:
+                    st.error("Passwords do not match.")
+                elif not t_code.strip() or not t_user.strip():
+                    st.error("All fields are required.")
+                else:
+                    ok, msg = auth.signup_teacher(t_user.strip(), t_pass, t_code.strip())
+                    if ok:
+                        st.success("Account created! Please sign in using the Sign In tab.")
                     else:
-                        st.error("❌ Invalid username or password. Please try again.")
-                except Exception:
-                    # DB check failed — only allow admin fallback
-                    if username == "admin" and password == st.session_state["admin_password"]:
-                        st.session_state["logged_in"] = True
-                        st.session_state["current_user"] = "admin"
-                        st.session_state["current_role"] = "Admin"
-                        st.rerun()
+                        st.error(f"&#10060; {msg}")
+
+        # ── Student Sign Up ──────────────────────────────────────────────────
+        with tab_student_signup:
+            st.caption("Already enrolled? Create your login account here using your roll number.")
+            with st.form("student_signup_form", clear_on_submit=True):
+                s_roll  = st.text_input("Your Roll Number", placeholder="e.g. CS101")
+                s_user  = st.text_input("Choose a Username", placeholder="e.g. aarav_shrestha")
+                s_pass  = st.text_input("Password (min 8 chars)", type="password")
+                s_pass2 = st.text_input("Confirm Password", type="password")
+                s_sub   = st.form_submit_button("&#127891; Create Student Account",
+                                                use_container_width=True)
+            if s_sub:
+                if len(s_pass) < 8:
+                    st.error("Password must be at least 8 characters.")
+                elif s_pass != s_pass2:
+                    st.error("Passwords do not match.")
+                elif not s_roll.strip() or not s_user.strip():
+                    st.error("All fields are required.")
+                else:
+                    ok, msg = auth.signup_student(s_user.strip(), s_pass, s_roll.strip())
+                    if ok:
+                        st.success("Account created! Please sign in using the Sign In tab.")
                     else:
-                        st.error("❌ Invalid username or password.")
-
-        st.markdown("""
-            <div style="text-align:center; margin-top:24px; color:#475569; font-size:0.8rem;">
-                Default admin: <b style='color:#94A3B8'>admin</b> / <b style='color:#94A3B8'>admin123</b>
-            </div>
-        """, unsafe_allow_html=True)
+                        st.error(f"&#10060; {msg}")
 
 
-# ── Auth Gate ─────────────────────────────────────────────────────────────────
+# ── Auth Gate ──────────────────────────────────────────────────────────────────
 if not st.session_state["logged_in"]:
-    show_login_page()
+    if not auth.admin_exists():
+        show_admin_setup()
+    else:
+        show_login_page()
     st.stop()
 
 
@@ -290,33 +346,35 @@ with head_col2:
             st.button("🪪 Export Credentials", disabled=True, use_container_width=True)
 
 with head_col3:
-    if st.button("🔑 Change Password", use_container_width=True):
+    if st.button("&#128273; Change Password", use_container_width=True):
         st.session_state["show_pw_dialog"] = True
 
 with head_col4:
-    if st.button("🚪 Logout", use_container_width=True, type="secondary"):
-        st.session_state["logged_in"] = False
-        st.session_state["current_user"] = ""
-        st.session_state["current_role"] = ""
+    if st.button("&#128682; Logout", use_container_width=True, type="secondary"):
+        for _k in ["logged_in", "current_user", "current_role", "user_id", "teacher_id", "student_id"]:
+            st.session_state[_k] = False if _k == "logged_in" else None if _k in ("user_id", "teacher_id", "student_id") else ""
         st.rerun()
 
 if st.session_state.get("show_pw_dialog"):
-    with st.expander("🔐 Change Password Form", expanded=True):
+    with st.expander("&#128273; Change Password", expanded=True):
         with st.form("pw_change_form"):
-            curr_pw = st.text_input("Current Password", type="password")
-            new_pw = st.text_input("New Password", type="password")
+            curr_pw    = st.text_input("Current Password", type="password")
+            new_pw     = st.text_input("New Password (min 8 chars)", type="password")
             confirm_pw = st.text_input("Confirm New Password", type="password")
             if st.form_submit_button("Update Password"):
-                if curr_pw != st.session_state["admin_password"]:
-                    st.error("Current password is incorrect.")
-                elif new_pw != confirm_pw:
+                if new_pw != confirm_pw:
                     st.error("New passwords do not match.")
-                elif len(new_pw) < 6:
-                    st.error("Password must be at least 6 characters.")
+                elif len(new_pw) < 8:
+                    st.error("Password must be at least 8 characters.")
+                elif not st.session_state["user_id"]:
+                    st.error("Session error. Please log out and log in again.")
                 else:
-                    st.session_state["admin_password"] = new_pw
-                    st.success("Password updated successfully!")
-                    st.session_state["show_pw_dialog"] = False
+                    ok, msg = auth.change_password(st.session_state["user_id"], curr_pw, new_pw)
+                    if ok:
+                        st.success("Password updated successfully!")
+                        st.session_state["show_pw_dialog"] = False
+                    else:
+                        st.error(f"&#10060; {msg}")
 
 # Quick connection diagnostic check
 is_connected, conn_msg = test_connection()
