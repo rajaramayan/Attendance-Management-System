@@ -6,6 +6,7 @@ Supports CSV and PDF exports using the csv and reportlab libraries.
 """
 
 import csv
+import io
 import os
 from datetime import datetime, date
 
@@ -156,11 +157,16 @@ def get_dashboard_stats():
         "today_classes":  "SELECT COUNT(DISTINCT e.course_id) AS v FROM attendance a JOIN enrollment e ON a.enrollment_id=e.enrollment_id WHERE a.attendance_date=CURDATE()",
         "today_present":  "SELECT COUNT(*) AS v FROM attendance WHERE attendance_date=CURDATE() AND status='Present'",
         "today_total":    "SELECT COUNT(*) AS v FROM attendance WHERE attendance_date=CURDATE()",
+        "total_records":  "SELECT COUNT(*) AS v FROM attendance",
     }
     for key, q in queries.items():
         cur.execute(q)
         row = cur.fetchone()
         stats[key] = row['v'] if row else 0
+
+    cur.execute("SELECT ROUND(COALESCE(SUM(status IN ('Present','Late'))*100.0/NULLIF(COUNT(attendance_id),0), 0), 1) AS v FROM attendance")
+    row_pct = cur.fetchone()
+    stats["avg_attendance_pct"] = row_pct['v'] if row_pct and row_pct['v'] is not None else 0.0
 
     # Avg attendance pct per course (all time)
     cur.execute("""
@@ -184,7 +190,6 @@ def get_dashboard_stats():
     """)
     stats["overall_status"] = cur.fetchone()
 
-
     # Recent 8 attendance records
     cur.execute("""
         SELECT a.attendance_date, s.name AS student, c.course_code, a.status
@@ -198,6 +203,9 @@ def get_dashboard_stats():
 
     cur.close(); conn.close()
     return stats
+
+
+get_overall_dashboard_stats = get_dashboard_stats
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -458,12 +466,18 @@ def generate_credentials_pdf(filepath):
     return filepath
 
 
-def export_to_csv(rows, filepath):
-
-    """Write a list-of-dicts to a CSV file. Returns filepath."""
+def export_to_csv(rows, filepath=None):
+    """Write a list-of-dicts to a CSV file. Returns filepath or bytes if filepath is None."""
     if not rows:
         raise ValueError("No data to export.")
     headers = list(rows[0].keys())
+    if filepath is None:
+        out = io.StringIO()
+        writer = csv.DictWriter(out, fieldnames=headers)
+        writer.writeheader()
+        writer.writerows(rows)
+        return out.getvalue().encode("utf-8")
+
     with open(filepath, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=headers)
         writer.writeheader()
@@ -471,7 +485,7 @@ def export_to_csv(rows, filepath):
     return filepath
 
 
-def export_to_pdf(rows, filepath, title="Attendance Report",
+def export_to_pdf(rows, filepath=None, title="Attendance Report",
                   subtitle="", orientation="portrait"):
     """
     Generate a styled PDF report using ReportLab.
@@ -482,9 +496,11 @@ def export_to_pdf(rows, filepath, title="Attendance Report",
     if not rows:
         raise ValueError("No data to export.")
 
+    target_dest = filepath if filepath else io.BytesIO()
+
     page_size = A4 if orientation == "portrait" else landscape(A4)
     doc = SimpleDocTemplate(
-        filepath, pagesize=page_size,
+        target_dest, pagesize=page_size,
         leftMargin=1.5*cm, rightMargin=1.5*cm,
         topMargin=2*cm,    bottomMargin=1.5*cm
     )
@@ -559,15 +575,15 @@ def export_to_pdf(rows, filepath, title="Attendance Report",
         ("TOPPADDING",    (0, 0), (-1, 0),  8),
         # Body
         ("FONTNAME",      (0, 1), (-1, -1), "Helvetica"),
-        ("FONTSIZE",      (0, 1), (-1, -1), 8),
-        ("ALIGN",         (0, 1), (-1, -1), "CENTER"),
+        ("FONTSIZE",      (0, 1), (-1, -1), 8.5),
+        ("GRID",          (0, 0), (-1, -1), 0.4, colors.HexColor("#CBD5E0")),
         ("ROWBACKGROUNDS",(0, 1), (-1, -1), [colors.white, colors.HexColor("#F7FAFC")]),
-        ("GRID",          (0, 0), (-1, -1), 0.5, colors.HexColor("#E2E8F0")),
-        ("TOPPADDING",    (0, 1), (-1, -1), 5),
-        ("BOTTOMPADDING", (0, 1), (-1, -1), 5),
+        ("TOPPADDING",    (0, 1), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 1), (-1, -1), 4),
+        ("ALIGN",         (0, 1), (-1, -1), "CENTER"),
     ])
 
-    # Color-code attendance status cells
+    # Highlight status column if present
     status_col = None
     if "status" in keys:
         status_col = keys.index("status")
@@ -596,6 +612,8 @@ def export_to_pdf(rows, filepath, title="Attendance Report",
     ))
 
     doc.build(story)
+    if filepath is None:
+        return target_dest.getvalue()
     return filepath
 
 
