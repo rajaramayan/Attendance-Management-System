@@ -36,32 +36,24 @@ st.markdown("""
         color: #6B7280;
         margin-bottom: 1.5rem;
     }
-    .metric-card {
-        background: #F3F4F6;
-        padding: 1rem;
-        border-radius: 10px;
-        border-left: 5px solid #2563EB;
+    /* Style horizontal tabs */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 10px;
     }
-    .badge-present {
-        background-color: #DEF7EC;
-        color: #03543F;
-        padding: 4px 8px;
-        border-radius: 4px;
+    .stTabs [data-baseweb="tab"] {
+        height: 50px;
+        white-space: pre-wrap;
+        border-radius: 8px 8px 0px 0px;
+        padding-top: 10px;
+        padding-bottom: 10px;
+        padding-left: 16px;
+        padding-right: 16px;
         font-weight: 600;
+        font-size: 1.05rem;
     }
-    .badge-absent {
-        background-color: #FDE8E8;
-        color: #9B1C1C;
-        padding: 4px 8px;
-        border-radius: 4px;
-        font-weight: 600;
-    }
-    .badge-late {
-        background-color: #FEF08A;
-        color: #713F12;
-        padding: 4px 8px;
-        border-radius: 4px;
-        font-weight: 600;
+    .stTabs [aria-selected="true"] {
+        background-color: #E0E7FF !important;
+        color: #1E40AF !important;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -114,27 +106,18 @@ def fetch_students():
         return pd.DataFrame()
 
 
-# ── Sidebar Navigation ────────────────────────────────────────────────────────
+# ── Sidebar Status ────────────────────────────────────────────────────────────
 st.sidebar.image("https://img.icons8.com/illustrations/100/graduation-cap.png", width=70)
-st.sidebar.title("🎓 Navigation")
-menu = st.sidebar.radio(
-    "Select Module:",
-    [
-        "📊 Dashboard Overview",
-        "📝 Mark / Edit Attendance",
-        "📈 Attendance Reports & Defaulters",
-        "👨‍🎓 Student & Course Directory",
-        "⚙️ Database & Connection Status",
-    ],
-)
+st.sidebar.title("🎓 Control Panel")
 
-st.sidebar.markdown("---")
-# Quick DB status indicator in sidebar
 is_connected, conn_msg = test_connection()
 if is_connected:
     st.sidebar.success("🟢 DB Connected")
 else:
     st.sidebar.error("🔴 DB Disconnected")
+
+st.sidebar.markdown("---")
+st.sidebar.info("💡 Tip: Use the top tabs to switch between Dashboard, Attendance Marking, Reports, Directory, and Settings!")
 
 
 # ── Header Banner ─────────────────────────────────────────────────────────────
@@ -142,10 +125,20 @@ st.markdown('<div class="main-title">🎓 Student Attendance Management System</
 st.markdown('<div class="sub-title">Web-based Dashboard for Tracking, Marking, and Reporting Student Attendance</div>', unsafe_allow_html=True)
 
 
+# ── Top Navigation Tabs ───────────────────────────────────────────────────────
+tab_dash, tab_mark, tab_reports, tab_dir, tab_db = st.tabs([
+    "📊 Dashboard Overview",
+    "📝 Mark / Edit Attendance",
+    "📈 Reports & Defaulters",
+    "👨‍🎓 Student & Course Directory",
+    "⚙️ Database & Connection Status",
+])
+
+
 # ══════════════════════════════════════════════════════════════════════════════
-# MODULE 1: DASHBOARD OVERVIEW
+# TAB 1: DASHBOARD OVERVIEW
 # ══════════════════════════════════════════════════════════════════════════════
-if menu == "📊 Dashboard Overview":
+with tab_dash:
     st.subheader("📊 Dashboard Analytics")
 
     if not is_connected:
@@ -181,7 +174,6 @@ if menu == "📊 Dashboard Overview":
                     y="attendance_pct",
                     x_label="Course Code",
                     y_label="Attendance (%)",
-                    use_container_width=True
                 )
 
                 st.subheader("📋 Student Attendance Summary")
@@ -194,9 +186,9 @@ if menu == "📊 Dashboard Overview":
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# MODULE 2: MARK / EDIT ATTENDANCE
+# TAB 2: MARK / EDIT ATTENDANCE
 # ══════════════════════════════════════════════════════════════════════════════
-elif menu == "📝 Mark / Edit Attendance":
+with tab_mark:
     st.subheader("📝 Mark / Update Daily Attendance")
 
     if not is_connected:
@@ -290,9 +282,9 @@ elif menu == "📝 Mark / Edit Attendance":
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# MODULE 3: ATTENDANCE REPORTS & DEFAULTERS
+# TAB 3: ATTENDANCE REPORTS & DEFAULTERS
 # ══════════════════════════════════════════════════════════════════════════════
-elif menu == "📈 Attendance Reports & Defaulters":
+with tab_reports:
     st.subheader("📈 Attendance Reports & Low Attendance Alerts")
 
     if not is_connected:
@@ -364,9 +356,9 @@ elif menu == "📈 Attendance Reports & Defaulters":
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# MODULE 4: STUDENT & COURSE DIRECTORY
+# TAB 4: STUDENT & COURSE DIRECTORY
 # ══════════════════════════════════════════════════════════════════════════════
-elif menu == "👨‍🎓 Student & Course Directory":
+with tab_dir:
     st.subheader("👨‍🎓 Directory Information")
 
     if not is_connected:
@@ -400,9 +392,9 @@ elif menu == "👨‍🎓 Student & Course Directory":
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# MODULE 5: DATABASE & CONNECTION STATUS
+# TAB 5: DATABASE & CONNECTION STATUS
 # ══════════════════════════════════════════════════════════════════════════════
-elif menu == "⚙️ Database & Connection Status":
+with tab_db:
     st.subheader("⚙️ Database Connection & Configuration")
 
     st.write("### Diagnostic Test")
