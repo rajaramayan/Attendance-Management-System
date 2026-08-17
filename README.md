@@ -30,7 +30,7 @@ A comprehensive Attendance Management System built with Python, MySQL, Tkinter G
 
 1. **Clone the repository**:
    ```bash
-   git clone https://github.com/<YOUR_USERNAME>/Attendance-Management-System.git
+   git clone https://github.com/rajaramayan/Attendance-Management-System.git
    cd Attendance-Management-System
    ```
 
