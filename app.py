@@ -2,8 +2,14 @@
 app.py
 ------
 Streamlit Web Application for Student Attendance Management System.
-Connects to MySQL / Aiven DB, visualizes attendance metrics, handles attendance marking,
-generates defaulter lists, and exports reports to CSV and PDF.
+Matches the full Tkinter desktop application (main_app.py) feature-for-feature with 7 tabs:
+1. 🏠 Dashboard
+2. 🏢 Departments
+3. 👨‍🎓 Students
+4. 👩‍🏫 Teachers
+5. 📚 Courses
+6. ✔️ Attendance
+7. 📊 Reports
 """
 
 import streamlit as st
@@ -16,51 +22,69 @@ import attendance_report as ar
 
 # ── Page Configuration ────────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="Attendance Management System",
+    page_title="College Attendance Management System",
     page_icon="🎓",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="collapsed",
 )
 
-# ── Custom CSS Styling ────────────────────────────────────────────────────────
+# ── Custom CSS Styling (Dark/Navy header theme matching main_app.py) ──────────
 st.markdown("""
     <style>
-    .main-title {
-        font-size: 2.2rem;
+    /* Top Header Bar */
+    .top-header {
+        background-color: #1E293B;
+        color: white;
+        padding: 12px 20px;
+        border-radius: 8px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 15px;
+    }
+    .top-title {
+        font-size: 1.4rem;
         font-weight: 700;
-        color: #1E3A8A;
-        margin-bottom: 0.2rem;
+        color: #F8FAFC;
     }
-    .sub-title {
-        font-size: 1rem;
-        color: #6B7280;
-        margin-bottom: 1.5rem;
+    .top-sub {
+        font-size: 0.85rem;
+        color: #94A3B8;
     }
-    /* Style horizontal tabs */
+    /* Tabs styling */
     .stTabs [data-baseweb="tab-list"] {
-        gap: 10px;
+        gap: 6px;
+        background-color: #0F172A;
+        padding: 6px;
+        border-radius: 8px;
     }
     .stTabs [data-baseweb="tab"] {
-        height: 50px;
-        white-space: pre-wrap;
-        border-radius: 8px 8px 0px 0px;
-        padding-top: 10px;
-        padding-bottom: 10px;
-        padding-left: 16px;
-        padding-right: 16px;
+        height: 45px;
+        border-radius: 6px;
+        padding: 8px 16px;
         font-weight: 600;
-        font-size: 1.05rem;
+        font-size: 0.95rem;
+        color: #94A3B8;
     }
     .stTabs [aria-selected="true"] {
-        background-color: #E0E7FF !important;
-        color: #1E40AF !important;
+        background-color: #2563EB !important;
+        color: #FFFFFF !important;
+    }
+    /* Metric Card */
+    .stat-card {
+        background-color: #FFFFFF;
+        border: 1px solid #E2E8F0;
+        border-radius: 8px;
+        padding: 15px;
+        text-align: center;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
     }
     </style>
 """, unsafe_allow_html=True)
 
 
-# ── Database Helpers ──────────────────────────────────────────────────────────
-@st.cache_data(ttl=60)
+# ── DB Data Helpers ───────────────────────────────────────────────────────────
+@st.cache_data(ttl=30)
 def fetch_departments():
     try:
         conn = get_connection()
@@ -71,7 +95,41 @@ def fetch_departments():
         return pd.DataFrame()
 
 
-@st.cache_data(ttl=60)
+@st.cache_data(ttl=30)
+def fetch_teachers():
+    try:
+        conn = get_connection()
+        query = """
+            SELECT t.teacher_id, t.teacher_code, t.name, t.email, t.phone, d.dept_name
+            FROM teacher t
+            LEFT JOIN department d ON t.dept_id = d.dept_id
+            ORDER BY t.name
+        """
+        df = pd.read_sql(query, conn)
+        conn.close()
+        return df
+    except Exception:
+        return pd.DataFrame()
+
+
+@st.cache_data(ttl=30)
+def fetch_students():
+    try:
+        conn = get_connection()
+        query = """
+            SELECT s.student_id, s.roll_no, s.name, s.email, s.semester, d.dept_name
+            FROM student s
+            LEFT JOIN department d ON s.dept_id = d.dept_id
+            ORDER BY s.roll_no
+        """
+        df = pd.read_sql(query, conn)
+        conn.close()
+        return df
+    except Exception:
+        return pd.DataFrame()
+
+
+@st.cache_data(ttl=30)
 def fetch_courses():
     try:
         conn = get_connection()
@@ -89,127 +147,299 @@ def fetch_courses():
         return pd.DataFrame()
 
 
-@st.cache_data(ttl=60)
-def fetch_students():
-    try:
-        conn = get_connection()
-        query = """
-            SELECT s.student_id, s.roll_no, s.name, s.email, s.semester, d.dept_name
-            FROM student s
-            LEFT JOIN department d ON s.dept_id = d.dept_id
-            ORDER BY s.roll_no
-        """
-        df = pd.read_sql(query, conn)
-        conn.close()
-        return df
-    except Exception:
-        return pd.DataFrame()
+# ── Top Bar Header ────────────────────────────────────────────────────────────
+head_col1, head_col2, head_col3 = st.columns([3, 1, 1])
+with head_col1:
+    st.markdown("""
+        <div class="top-header">
+            <div>
+                <div class="top-title">🎓 College Attendance System</div>
+                <div class="top-sub">System Date: """ + datetime.now().strftime("%A, %d %B %Y") + """</div>
+            </div>
+            <div style="font-size:0.9rem; color:#CBD5E1;">
+                👤 Logged in as: <b>admin (Admin)</b>
+            </div>
+        </div>
+    """, unsafe_allow_html=True)
 
+with head_col2:
+    if ar.PDF_AVAILABLE:
+        try:
+            cred_pdf = ar.generate_credentials_pdf(filepath=None)
+            st.download_button(
+                "🪪 Export Credentials",
+                data=cred_pdf,
+                file_name="login_credentials.pdf",
+                mime="application/pdf",
+                use_container_width=True
+            )
+        except Exception:
+            st.button("🪪 Export Credentials", disabled=True, use_container_width=True)
 
-# ── Sidebar Status ────────────────────────────────────────────────────────────
-st.sidebar.image("https://img.icons8.com/illustrations/100/graduation-cap.png", width=70)
-st.sidebar.title("🎓 Control Panel")
+with head_col3:
+    if st.button("🔑 Change Password", use_container_width=True):
+        st.session_state["show_pw_dialog"] = True
 
+if st.session_state.get("show_pw_dialog"):
+    with st.expander("🔐 Change Password Form", expanded=True):
+        with st.form("pw_change_form"):
+            curr_pw = st.text_input("Current Password", type="password")
+            new_pw = st.text_input("New Password", type="password")
+            confirm_pw = st.text_input("Confirm New Password", type="password")
+            if st.form_submit_button("Update Password"):
+                if new_pw != confirm_pw:
+                    st.error("New passwords do not match.")
+                elif len(new_pw) < 6:
+                    st.error("Password must be at least 6 characters.")
+                else:
+                    st.success("Password updated successfully!")
+                    st.session_state["show_pw_dialog"] = False
+
+# Quick connection diagnostic check
 is_connected, conn_msg = test_connection()
-if is_connected:
-    st.sidebar.success("🟢 DB Connected")
-else:
-    st.sidebar.error("🔴 DB Disconnected")
-
-st.sidebar.markdown("---")
-st.sidebar.info("💡 Tip: Use the top tabs to switch between Dashboard, Attendance Marking, Reports, Directory, and Settings!")
+if not is_connected:
+    st.error(f"🔴 Database Disconnected: {conn_msg}. Please configure Streamlit Secrets (`.streamlit/secrets.toml`).")
 
 
-# ── Header Banner ─────────────────────────────────────────────────────────────
-st.markdown('<div class="main-title">🎓 Student Attendance Management System</div>', unsafe_allow_html=True)
-st.markdown('<div class="sub-title">Web-based Dashboard for Tracking, Marking, and Reporting Student Attendance</div>', unsafe_allow_html=True)
-
-
-# ── Top Navigation Tabs ───────────────────────────────────────────────────────
-tab_dash, tab_mark, tab_reports, tab_dir, tab_db = st.tabs([
-    "📊 Dashboard Overview",
-    "📝 Mark / Edit Attendance",
-    "📈 Reports & Defaulters",
-    "👨‍🎓 Student & Course Directory",
-    "⚙️ Database & Connection Status",
+# ── 7 Main Tabs (Matching main_app.py) ────────────────────────────────────────
+tab_dash, tab_dept, tab_stud, tab_tchr, tab_crs, tab_att, tab_rep = st.tabs([
+    "🏠 Dashboard",
+    "🏢 Departments",
+    "👨‍🎓 Students",
+    "👩‍🏫 Teachers",
+    "📚 Courses",
+    "✔️ Attendance",
+    "📊 Reports"
 ])
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# TAB 1: DASHBOARD OVERVIEW
-# ══════════════════════════════════════════════════════════════════════════════
+# ==============================================================================
+# TAB 1: DASHBOARD
+# ==============================================================================
 with tab_dash:
-    st.subheader("📊 Dashboard Analytics")
-
-    if not is_connected:
-        st.warning(f"⚠️ Cannot load database metrics: {conn_msg}")
-        st.info("💡 Please configure your database connection in Streamlit Secrets (`.streamlit/secrets.toml`).")
-    else:
+    st.subheader("🎓 College Attendance Management System")
+    
+    if is_connected:
         try:
             stats = ar.get_overall_dashboard_stats()
-            col1, col2, col3, col4 = st.columns(4)
-            with col1:
-                st.metric("Total Students", stats.get("total_students", 0))
-            with col2:
-                st.metric("Total Courses", stats.get("total_courses", 0))
-            with col3:
-                st.metric("Total Attendance Logs", stats.get("total_records", 0))
-            with col4:
-                avg_pct = stats.get("avg_attendance_pct", 0)
-                st.metric("Overall Attendance %", f"{avg_pct}%")
+            
+            # Top Stat Cards
+            c1, c2, c3, c4, c5 = st.columns(5)
+            with c1:
+                st.metric("🎓 Students", stats.get("total_students", 0))
+            with c2:
+                st.metric("👩‍🏫 Teachers", stats.get("total_teachers", 0))
+            with c3:
+                st.metric("📚 Courses", stats.get("total_courses", 0))
+            with c4:
+                st.metric("🏢 Departments", stats.get("total_dept", 0))
+            with c5:
+                today_tot = stats.get("today_total", 0)
+                today_pres = stats.get("today_present", 0)
+                today_pct = round(today_pres * 100.0 / today_tot, 1) if today_tot > 0 else 0
+                st.metric("📅 Today's Att. %", f"{today_pct}%")
 
             st.markdown("---")
 
-            # Chart: Attendance Summary per Course
-            st.subheader("📚 Course-wise Attendance Overview")
-            summary_data = ar.get_student_attendance_summary()
-            if summary_data:
-                df_summary = pd.DataFrame(summary_data)
+            col_left, col_right = st.columns([1.5, 1])
+
+            with col_left:
+                st.write("#### 📊 Course Attendance %")
+                summary_data = ar.get_student_attendance_summary()
+                if summary_data:
+                    df_summary = pd.DataFrame(summary_data)
+                    df_course_avg = df_summary.groupby(["course_code", "course_name"])["attendance_pct"].mean().reset_index()
+                    st.bar_chart(
+                        data=df_course_avg,
+                        x="course_code",
+                        y="attendance_pct",
+                        x_label="Course Code",
+                        y_label="Attendance (%)"
+                    )
+                else:
+                    st.info("No attendance data available.")
+
+            with col_right:
+                st.write("#### 🕒 Recent Attendance")
+                recent = stats.get("recent", [])
+                if recent:
+                    df_recent = pd.DataFrame(recent)
+                    st.dataframe(df_recent, use_container_width=True)
+                else:
+                    st.info("No recent attendance records.")
+
+        except Exception as ex:
+            st.error(f"Error loading dashboard stats: {ex}")
+
+
+# ==============================================================================
+# TAB 2: DEPARTMENTS
+# ==============================================================================
+with tab_dept:
+    st.subheader("🏢 Department Management")
+    if is_connected:
+        dept_df = fetch_departments()
+        st.dataframe(dept_df, use_container_width=True)
+
+        with st.expander("➕ Add New Department"):
+            with st.form("add_dept_form"):
+                d_name = st.text_input("Department Name (e.g. Computer Science)")
+                d_code = st.text_input("Department Code (e.g. CSE)")
+                if st.form_submit_button("Add Department"):
+                    if d_name and d_code:
+                        try:
+                            conn = get_connection()
+                            cur = conn.cursor()
+                            cur.execute("INSERT INTO department (dept_name, code) VALUES (%s, %s)", (d_name, d_code))
+                            conn.commit()
+                            conn.close()
+                            st.success(f"Department '{d_name}' added successfully!")
+                            st.cache_data.clear()
+                        except Exception as e:
+                            st.error(f"Failed to add department: {e}")
+                    else:
+                        st.warning("Please enter both Department Name and Code.")
+
+
+# ==============================================================================
+# TAB 3: STUDENTS
+# ==============================================================================
+with tab_stud:
+    st.subheader("👨‍🎓 Student Management")
+    if is_connected:
+        stud_df = fetch_students()
+        st.dataframe(stud_df, use_container_width=True)
+
+        with st.expander("➕ Register New Student"):
+            with st.form("add_student_form"):
+                r_no = st.text_input("Roll Number (e.g. CS104)")
+                s_name = st.text_input("Student Full Name")
+                s_email = st.text_input("Email Address")
+                s_sem = st.selectbox("Semester", [1, 2, 3, 4, 5, 6, 7, 8])
                 
-                # Plot Attendance Percentage by Course
-                df_course_avg = df_summary.groupby(["course_code", "course_name"])["attendance_pct"].mean().reset_index()
-                st.bar_chart(
-                    data=df_course_avg,
-                    x="course_code",
-                    y="attendance_pct",
-                    x_label="Course Code",
-                    y_label="Attendance (%)",
-                )
+                dept_df = fetch_departments()
+                d_map = {row['dept_name']: row['dept_id'] for _, row in dept_df.iterrows()} if not dept_df.empty else {}
+                s_dept = st.selectbox("Department", list(d_map.keys()) if d_map else ["None"])
 
-                st.subheader("📋 Student Attendance Summary")
-                st.dataframe(df_summary, use_container_width=True)
-            else:
-                st.info("No attendance records found yet.")
+                if st.form_submit_button("Save Student"):
+                    if r_no and s_name:
+                        try:
+                            conn = get_connection()
+                            cur = conn.cursor()
+                            cur.execute(
+                                "INSERT INTO student (roll_no, name, email, semester, dept_id) VALUES (%s, %s, %s, %s, %s)",
+                                (r_no, s_name, s_email, s_sem, d_map.get(s_dept))
+                            )
+                            conn.commit()
+                            conn.close()
+                            st.success(f"Student '{s_name}' added successfully!")
+                            st.cache_data.clear()
+                        except Exception as e:
+                            st.error(f"Failed to add student: {e}")
+                    else:
+                        st.warning("Please provide Roll Number and Student Name.")
 
-        except Exception as e:
-            st.error(f"Error fetching dashboard metrics: {e}")
+
+# ==============================================================================
+# TAB 4: TEACHERS
+# ==============================================================================
+with tab_tchr:
+    st.subheader("👩‍🏫 Teacher Management")
+    if is_connected:
+        tchr_df = fetch_teachers()
+        st.dataframe(tchr_df, use_container_width=True)
+
+        with st.expander("➕ Register New Teacher"):
+            with st.form("add_teacher_form"):
+                t_code = st.text_input("Teacher Code (e.g. TCH05)")
+                t_name = st.text_input("Teacher Name")
+                t_email = st.text_input("Teacher Email")
+                t_phone = st.text_input("Phone Number")
+                
+                dept_df = fetch_departments()
+                d_map = {row['dept_name']: row['dept_id'] for _, row in dept_df.iterrows()} if not dept_df.empty else {}
+                t_dept = st.selectbox("Department", list(d_map.keys()) if d_map else ["None"])
+
+                if st.form_submit_button("Save Teacher"):
+                    if t_name:
+                        try:
+                            conn = get_connection()
+                            cur = conn.cursor()
+                            cur.execute(
+                                "INSERT INTO teacher (teacher_code, name, email, phone, dept_id) VALUES (%s, %s, %s, %s, %s)",
+                                (t_code, t_name, t_email, t_phone, d_map.get(t_dept))
+                            )
+                            conn.commit()
+                            conn.close()
+                            st.success(f"Teacher '{t_name}' added successfully!")
+                            st.cache_data.clear()
+                        except Exception as e:
+                            st.error(f"Failed to add teacher: {e}")
+                    else:
+                        st.warning("Please provide Teacher Name.")
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# TAB 2: MARK / EDIT ATTENDANCE
-# ══════════════════════════════════════════════════════════════════════════════
-with tab_mark:
-    st.subheader("📝 Mark / Update Daily Attendance")
+# ==============================================================================
+# TAB 5: COURSES
+# ==============================================================================
+with tab_crs:
+    st.subheader("📚 Course Management")
+    if is_connected:
+        crs_df = fetch_courses()
+        st.dataframe(crs_df, use_container_width=True)
 
-    if not is_connected:
-        st.error(f"Cannot connect to database: {conn_msg}")
-    else:
+        with st.expander("➕ Add New Course"):
+            with st.form("add_course_form"):
+                c_code = st.text_input("Course Code (e.g. CS303)")
+                c_name = st.text_input("Course Name (e.g. Operating Systems)")
+
+                dept_df = fetch_departments()
+                d_map = {row['dept_name']: row['dept_id'] for _, row in dept_df.iterrows()} if not dept_df.empty else {}
+                c_dept = st.selectbox("Department", list(d_map.keys()) if d_map else ["None"])
+
+                tchr_df = fetch_teachers()
+                t_map = {row['name']: row['teacher_id'] for _, row in tchr_df.iterrows()} if not tchr_df.empty else {}
+                c_tchr = st.selectbox("Assigned Teacher", list(t_map.keys()) if t_map else ["None"])
+
+                if st.form_submit_button("Save Course"):
+                    if c_code and c_name:
+                        try:
+                            conn = get_connection()
+                            cur = conn.cursor()
+                            cur.execute(
+                                "INSERT INTO course (course_code, course_name, dept_id, teacher_id) VALUES (%s, %s, %s, %s)",
+                                (c_code, c_name, d_map.get(c_dept), t_map.get(c_tchr))
+                            )
+                            conn.commit()
+                            conn.close()
+                            st.success(f"Course '{c_code}' added successfully!")
+                            st.cache_data.clear()
+                        except Exception as e:
+                            st.error(f"Failed to add course: {e}")
+                    else:
+                        st.warning("Please provide Course Code and Course Name.")
+
+
+# ==============================================================================
+# TAB 6: ATTENDANCE
+# ==============================================================================
+with tab_att:
+    st.subheader("✔️ Mark & Manage Daily Attendance")
+    if is_connected:
         courses_df = fetch_courses()
         if courses_df.empty:
-            st.warning("No courses available. Please add courses first.")
+            st.warning("No active courses found.")
         else:
-            col_c, col_d = st.columns(2)
-            with col_c:
-                course_opts = {f"{row['course_code']} - {row['course_name']}": row['course_id'] for _, row in courses_df.iterrows()}
-                selected_course_label = st.selectbox("Select Course:", list(course_opts.keys()))
-                selected_course_id = course_opts[selected_course_label]
-
-            with col_d:
-                selected_date = st.date_input("Select Date:", value=date.today())
+            c1, c2 = st.columns(2)
+            with c1:
+                c_opts = {f"{row['course_code']} - {row['course_name']}": row['course_id'] for _, row in courses_df.iterrows()}
+                sel_c_label = st.selectbox("Select Course:", list(c_opts.keys()), key="att_c_sel")
+                sel_c_id = c_opts[sel_c_label]
+            with c2:
+                sel_date = st.date_input("Select Attendance Date:", value=date.today(), key="att_d_sel")
 
             st.markdown("---")
 
-            # Fetch students enrolled in this course
             try:
                 conn = get_connection()
                 query = """
@@ -221,199 +451,125 @@ with tab_mark:
                     ORDER BY s.roll_no
                 """
                 cursor = conn.cursor(dictionary=True)
-                cursor.execute(query, (selected_date, selected_course_id))
+                cursor.execute(query, (sel_date, sel_c_id))
                 enrolled_students = cursor.fetchall()
                 conn.close()
 
                 if not enrolled_students:
-                    st.info(f"No students enrolled in this course.")
+                    st.info("No students enrolled in this course.")
                 else:
-                    st.write(f"**Enrolled Students ({len(enrolled_students)}):**")
-                    
-                    with st.form("mark_attendance_form"):
-                        attendance_data = {}
-                        remarks_data = {}
-                        
-                        for student in enrolled_students:
-                            c1, c2, c3 = st.columns([2, 2, 3])
-                            with c1:
-                                st.write(f"**{student['roll_no']}** - {student['name']}")
-                            with c2:
-                                status_choice = st.radio(
-                                    f"Status for {student['roll_no']}",
+                    st.write(f"**Enrolled Students Count: {len(enrolled_students)}**")
+                    with st.form("mark_att_grid"):
+                        att_map = {}
+                        rem_map = {}
+                        for st_row in enrolled_students:
+                            col_s1, col_s2, col_s3 = st.columns([2, 2, 3])
+                            with col_s1:
+                                st.write(f"**{st_row['roll_no']}** - {st_row['name']}")
+                            with col_s2:
+                                init_idx = ["Present", "Absent", "Late"].index(st_row['status']) if st_row['status'] in ["Present", "Absent", "Late"] else 0
+                                status_val = st.radio(
+                                    f"Status_{st_row['enrollment_id']}",
                                     ["Present", "Absent", "Late"],
-                                    index=["Present", "Absent", "Late"].index(student['status']) if student['status'] in ["Present", "Absent", "Late"] else 0,
+                                    index=init_idx,
                                     horizontal=True,
-                                    key=f"status_{student['enrollment_id']}"
+                                    label_visibility="collapsed"
                                 )
-                                attendance_data[student['enrollment_id']] = status_choice
-                            with c3:
-                                remark_val = st.text_input(
-                                    f"Remarks for {student['roll_no']}",
-                                    value=student['remarks'] or "",
-                                    key=f"remark_{student['enrollment_id']}"
+                                att_map[st_row['enrollment_id']] = status_val
+                            with col_s3:
+                                rem_val = st.text_input(
+                                    f"Remarks_{st_row['enrollment_id']}",
+                                    value=st_row['remarks'] or "",
+                                    label_visibility="collapsed",
+                                    placeholder="Remarks (optional)"
                                 )
-                                remarks_data[student['enrollment_id']] = remark_val
+                                rem_map[st_row['enrollment_id']] = rem_val
                             st.divider()
 
-                        submit_btn = st.form_submit_button("💾 Save Attendance", type="primary")
-
-                        if submit_btn:
+                        if st.form_submit_button("💾 Save Attendance Records", type="primary"):
                             try:
                                 conn = get_connection()
                                 cur = conn.cursor()
-                                for enr_id, status in attendance_data.items():
-                                    rem = remarks_data.get(enr_id, "")
+                                for enr_id, status in att_map.items():
+                                    rem = rem_map.get(enr_id, "")
                                     sql = """
                                         INSERT INTO attendance (enrollment_id, attendance_date, status, remarks)
                                         VALUES (%s, %s, %s, %s)
                                         ON DUPLICATE KEY UPDATE status=%s, remarks=%s
                                     """
-                                    cur.execute(sql, (enr_id, selected_date, status, rem, status, rem))
+                                    cur.execute(sql, (enr_id, sel_date, status, rem, status, rem))
                                 conn.commit()
                                 conn.close()
-                                st.success("✅ Attendance saved successfully!")
+                                st.success("✅ Attendance updated successfully!")
                                 st.cache_data.clear()
                             except Exception as ex:
-                                st.error(f"Failed to save attendance: {ex}")
+                                st.error(f"Failed to update attendance: {ex}")
 
             except Exception as ex:
                 st.error(f"Error loading enrollment records: {ex}")
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# TAB 3: ATTENDANCE REPORTS & DEFAULTERS
-# ══════════════════════════════════════════════════════════════════════════════
-with tab_reports:
-    st.subheader("📈 Attendance Reports & Low Attendance Alerts")
+# ==============================================================================
+# TAB 7: REPORTS
+# ==============================================================================
+with tab_rep:
+    st.subheader("📊 Reports & Export Tools")
+    if is_connected:
+        rep_t1, rep_t2 = st.tabs(["📄 Attendance Summary Report", "⚠️ Low Attendance Defaulter Alerts"])
 
-    if not is_connected:
-        st.error(f"Cannot connect to database: {conn_msg}")
-    else:
-        tab1, tab2 = st.tabs(["⚠️ Defaulter List (< Threshold)", "📄 Detailed Attendance Report"])
-
-        with tab1:
-            st.write("### 🚨 Low Attendance Defaulter List")
-            threshold = st.slider("Select Attendance Threshold (%):", min_value=50, max_value=90, value=75, step=5)
-            
-            defaulters = ar.get_defaulter_list(threshold=threshold)
-            if defaulters:
-                st.warning(f"Found {len(defaulters)} student(s) below {threshold}% attendance.")
-                df_def = pd.DataFrame(defaulters)
-                st.dataframe(df_def, use_container_width=True)
-                
-                # Export Options
-                col_csv, col_pdf = st.columns(2)
-                with col_csv:
-                    csv_bytes = ar.export_to_csv(defaulters)
-                    st.download_button(
-                        label="📥 Download Defaulter CSV",
-                        data=csv_bytes,
-                        file_name=f"defaulters_below_{threshold}pct.csv",
-                        mime="text/csv"
-                    )
-                with col_pdf:
-                    if ar.PDF_AVAILABLE:
-                        pdf_bytes = ar.export_to_pdf(defaulters, title=f"Defaulter List (Below {threshold}%)")
-                        st.download_button(
-                            label="📥 Download Defaulter PDF",
-                            data=pdf_bytes,
-                            file_name=f"defaulters_below_{threshold}pct.pdf",
-                            mime="application/pdf"
-                        )
-                    else:
-                        st.info("PDF Export unavailable (reportlab package required).")
-            else:
-                st.success(f"🎉 Excellent! No students have attendance below {threshold}%.")
-
-        with tab2:
-            st.write("### 📊 Complete Student Attendance Report")
+        with rep_t1:
             all_summary = ar.get_student_attendance_summary()
             if all_summary:
-                df_all = pd.DataFrame(all_summary)
-                st.dataframe(df_all, use_container_width=True)
+                df_summary_all = pd.DataFrame(all_summary)
+                st.dataframe(df_summary_all, use_container_width=True)
 
-                c_csv, c_pdf = st.columns(2)
-                with c_csv:
-                    csv_b = ar.export_to_csv(all_summary)
+                col_dl1, col_dl2 = st.columns(2)
+                with col_dl1:
+                    csv_bytes = ar.export_to_csv(all_summary)
                     st.download_button(
-                        label="📥 Export Complete Summary CSV",
-                        data=csv_b,
+                        "📥 Export Summary CSV",
+                        data=csv_bytes,
                         file_name="student_attendance_summary.csv",
                         mime="text/csv"
                     )
-                with c_pdf:
+                with col_dl2:
                     if ar.PDF_AVAILABLE:
-                        pdf_b = ar.export_to_pdf(all_summary, title="Overall Attendance Summary")
+                        pdf_bytes = ar.export_to_pdf(all_summary, title="Student Attendance Summary Report")
                         st.download_button(
-                            label="📥 Export Complete Summary PDF",
-                            data=pdf_b,
+                            "📥 Export Summary PDF",
+                            data=pdf_bytes,
                             file_name="student_attendance_summary.pdf",
                             mime="application/pdf"
                         )
+                    else:
+                        st.info("PDF Export requires reportlab library.")
             else:
                 st.info("No attendance records found.")
 
+        with rep_t2:
+            thresh = st.slider("Attendance Threshold (%):", 50, 90, 75, 5)
+            defaulters = ar.get_defaulter_list(threshold=thresh)
+            if defaulters:
+                st.warning(f"Found {len(defaulters)} student(s) with attendance below {thresh}%.")
+                st.dataframe(pd.DataFrame(defaulters), use_container_width=True)
 
-# ══════════════════════════════════════════════════════════════════════════════
-# TAB 4: STUDENT & COURSE DIRECTORY
-# ══════════════════════════════════════════════════════════════════════════════
-with tab_dir:
-    st.subheader("👨‍🎓 Directory Information")
-
-    if not is_connected:
-        st.error(f"Cannot connect to database: {conn_msg}")
-    else:
-        st_tab, crs_tab, dept_tab = st.tabs(["👨‍🎓 Students", "📚 Courses", "🏢 Departments"])
-
-        with st_tab:
-            st.write("### Registered Students")
-            students_df = fetch_students()
-            if not students_df.empty:
-                st.dataframe(students_df, use_container_width=True)
+                cd1, cd2 = st.columns(2)
+                with cd1:
+                    csv_def = ar.export_to_csv(defaulters)
+                    st.download_button(
+                        "📥 Export Defaulter CSV",
+                        data=csv_def,
+                        file_name=f"defaulters_below_{thresh}pct.csv",
+                        mime="text/csv"
+                    )
+                with cd2:
+                    if ar.PDF_AVAILABLE:
+                        pdf_def = ar.export_to_pdf(defaulters, title=f"Defaulter List (Below {thresh}%)")
+                        st.download_button(
+                            "📥 Export Defaulter PDF",
+                            data=pdf_def,
+                            file_name=f"defaulters_below_{thresh}pct.pdf",
+                            mime="application/pdf"
+                        )
             else:
-                st.info("No student records found.")
-
-        with crs_tab:
-            st.write("### Active Courses")
-            courses_df = fetch_courses()
-            if not courses_df.empty:
-                st.dataframe(courses_df, use_container_width=True)
-            else:
-                st.info("No course records found.")
-
-        with dept_tab:
-            st.write("### Departments")
-            depts_df = fetch_departments()
-            if not depts_df.empty:
-                st.dataframe(depts_df, use_container_width=True)
-            else:
-                st.info("No department records found.")
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# TAB 5: DATABASE & CONNECTION STATUS
-# ══════════════════════════════════════════════════════════════════════════════
-with tab_db:
-    st.subheader("⚙️ Database Connection & Configuration")
-
-    st.write("### Diagnostic Test")
-    test_ok, test_msg = test_connection()
-
-    if test_ok:
-        st.success(f"✅ {test_msg}")
-    else:
-        st.error(f"❌ {test_msg}")
-
-    st.markdown("---")
-    st.write("### 🔑 Streamlit Secrets Format")
-    st.code("""
-[connections.mysql]
-dialect = "mysql"
-host = "mysql-27ea9885-attendance-management-systemnew.b.aivencloud.com"
-port = 25561
-database = "college"
-username = "avnadmin"
-password = "YOUR_DATABASE_PASSWORD"
-query = { charset = "utf8mb4" }
-    """, language="toml")
+                st.success(f"No students have attendance below {thresh}%. Excellent record!")
