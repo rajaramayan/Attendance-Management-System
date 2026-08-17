@@ -18,8 +18,9 @@ except ImportError as e:
 from datetime import date, datetime
 import os
 import calendar
+import hashlib
 
-from db_config import get_connection, test_connection
+from db_config import get_connection, test_connection, get_cursor
 import attendance_report as ar
 
 # ── Optional matplotlib for dashboard chart ───────────────────────────────────
@@ -1977,7 +1978,7 @@ class StudentPortalFrame(tk.Frame):
     def _build_ui(self):
         for w in self.winfo_children(): w.destroy()
 
-        conn = get_connection(); cur = conn.cursor(dictionary=True)
+        conn = get_connection(); cur = get_cursor(conn, dictionary=True)
         cur.execute("""
             SELECT s.student_id, s.roll_no, s.name, s.email, s.phone, s.gender, s.dob, d.dept_name
             FROM student s LEFT JOIN department d ON s.dept_id=d.dept_id
@@ -2110,16 +2111,18 @@ class ChangePasswordDialog(tk.Toplevel):
             self._err_lbl.config(text="New password must be at least 6 characters."); return
 
         try:
-            conn = get_connection(); cur = conn.cursor(dictionary=True)
+            cur_hash = hashlib.sha256(cur_pwd.encode()).hexdigest()
+            new_hash = hashlib.sha256(new_pwd.encode()).hexdigest()
+            conn = get_connection(); cur = get_cursor(conn, dictionary=True)
             cur.execute("SELECT user_id FROM users WHERE user_id=%s AND password_hash=%s",
-                        (self.user_id, cur_pwd))
+                        (self.user_id, cur_hash))
             row = cur.fetchone()
             if not row:
                 cur.close(); conn.close()
                 self._err_lbl.config(text="Current password is incorrect."); return
 
             cur.execute("UPDATE users SET password_hash=%s WHERE user_id=%s",
-                        (new_pwd, self.user_id))
+                        (new_hash, self.user_id))
             conn.commit(); cur.close(); conn.close()
             messagebox.showinfo("Password Changed",
                 "Your password has been updated successfully!", parent=self)
@@ -2186,21 +2189,22 @@ class LoginDialog(tk.Toplevel):
             self._err_lbl.config(text="Enter username and password.")
             return
         try:
-            conn = get_connection(); cur = conn.cursor(dictionary=True)
+            pwd_hash = hashlib.sha256(pwd.encode()).hexdigest()
+            conn = get_connection(); cur = get_cursor(conn, dictionary=True)
             if role == "Student":
                 cur.execute("""
                     SELECT u.user_id, u.username, u.role, u.student_id, s.name AS student_name, s.roll_no
                     FROM users u
                     LEFT JOIN student s ON u.student_id = s.student_id
                     WHERE (u.username=%s OR s.roll_no=%s) AND u.password_hash=%s AND u.role='Student'
-                """, (uname, uname, pwd))
+                """, (uname, uname, pwd_hash))
             else:
                 cur.execute("""
                     SELECT u.user_id, u.username, u.role, u.teacher_id, t.name AS teacher_name
                     FROM users u
                     LEFT JOIN teacher t ON u.teacher_id = t.teacher_id
                     WHERE u.username=%s AND u.password_hash=%s AND u.role=%s
-                """, (uname, pwd, role))
+                """, (uname, pwd_hash, role))
             user = cur.fetchone()
             cur.close(); conn.close()
             if user:
