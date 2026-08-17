@@ -1,6 +1,10 @@
 import os
-import tkinter as tk
-from tkinter import messagebox
+try:
+    import tkinter as tk
+    from tkinter import messagebox
+except ImportError:
+    tk = None
+    messagebox = None
 import mysql.connector
 
 

@@ -6,8 +6,15 @@ Multi-tab Tkinter GUI with Dashboard, Student/Teacher/Course Management,
 Attendance Marking, and Report Generation.
 """
 
-import tkinter as tk
-from tkinter import ttk, messagebox, filedialog
+try:
+    import tkinter as tk
+    from tkinter import ttk, messagebox, filedialog
+except ImportError as e:
+    raise ImportError(
+        "Tkinter is not available in this environment. "
+        "main_app.py is a Tkinter desktop GUI app for local desktop execution. "
+        "For Streamlit Cloud deployment, set your Main File Path to 'attendance_report.py'."
+    ) from e
 from datetime import date, datetime
 import os
 import calendar
