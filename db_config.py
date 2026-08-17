@@ -1,23 +1,30 @@
 import os
-import mysql.connector
-try:
-    from mysql.connector import Error
-except ImportError:
-    try:
-        from mysql.connector.errors import Error
-    except ImportError:
-        Error = Exception
 import streamlit as st
+
+# Try PyMySQL first, then fallback to mysql.connector
+try:
+    import pymysql
+    HAS_PYMYSQL = True
+except ImportError:
+    HAS_PYMYSQL = False
+
+try:
+    import mysql.connector
+    HAS_MYSQL_CONNECTOR = True
+except ImportError:
+    HAS_MYSQL_CONNECTOR = False
 
 
 def get_connection():
-    host = os.getenv("DB_HOST", "localhost")
+    # Default fallback credentials for Aiven Cloud MySQL
+    host = os.getenv("DB_HOST", "mysql-27ea9885-attendance-management-systemnew.b.aivencloud.com")
     port = int(os.getenv("DB_PORT", 25561))
-    user = os.getenv("DB_USER", "root")
-    password = os.getenv("DB_PASSWORD", "")
+    user = os.getenv("DB_USER", "avnadmin")
+    password = os.getenv("DB_PASSWORD", "YOUR_DB_PASSWORD")
     database = os.getenv("DB_NAME", "college")
     ssl_ca = "ca.pem" if os.path.exists("ca.pem") else None
 
+    # Check if Streamlit secrets exist
     try:
         if hasattr(st, "secrets") and "connections" in st.secrets and "mysql" in st.secrets["connections"]:
             mysql_conf = st.secrets["connections"]["mysql"]
@@ -29,29 +36,53 @@ def get_connection():
     except Exception:
         pass
 
-    kwargs = {
-        "host": host,
-        "port": port,
-        "user": user,
-        "password": password,
-        "database": database,
-    }
-    if ssl_ca and os.path.exists(ssl_ca):
-        kwargs["ssl_ca"] = ssl_ca
-        kwargs["ssl_verify_cert"] = True
+    # Try connecting with PyMySQL first (most reliable in cloud containers)
+    if HAS_PYMYSQL:
+        try:
+            kwargs = {
+                "host": host,
+                "port": port,
+                "user": user,
+                "password": password,
+                "database": database,
+                "cursorclass": pymysql.cursors.DictCursor,
+            }
+            if ssl_ca and os.path.exists(ssl_ca):
+                kwargs["ssl"] = {"ca": ssl_ca}
+            return pymysql.connect(**kwargs)
+        except Exception:
+            pass
 
-    return mysql.connector.connect(**kwargs)
+    # Fallback to mysql.connector
+    if HAS_MYSQL_CONNECTOR:
+        kwargs = {
+            "host": host,
+            "port": port,
+            "user": user,
+            "password": password,
+            "database": database,
+        }
+        if ssl_ca and os.path.exists(ssl_ca):
+            kwargs["ssl_ca"] = ssl_ca
+            kwargs["ssl_verify_cert"] = True
+        return mysql.connector.connect(**kwargs)
+
+    raise RuntimeError("Neither pymysql nor mysql-connector-python is available to connect to MySQL.")
 
 
 def test_connection():
     try:
         connection = get_connection()
-
-        if connection.is_connected():
-            connection.close()
-            return True, "Connected to MySQL successfully!"
-
-        return False, "Connection failed."
-
-    except Error as e:
+        connection.close()
+        return True, "Connected to MySQL successfully!"
+    except Exception as e:
         return False, str(e)
+
+
+def get_cursor(conn, dictionary=False):
+    if dictionary:
+        try:
+            return conn.cursor(dictionary=True)
+        except TypeError:
+            return conn.cursor()
+    return conn.cursor()

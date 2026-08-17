@@ -10,7 +10,7 @@ import io
 import os
 from datetime import datetime, date
 
-from db_config import get_connection
+from db_config import get_connection, get_cursor
 
 # ── Optional PDF support ───────────────────────────────────────────────────────
 try:
@@ -146,7 +146,7 @@ def get_date_range_report(start_date, end_date, course_id=None):
 def get_dashboard_stats():
     """Return summary numbers for the dashboard."""
     conn = get_connection()
-    cur  = conn.cursor(dictionary=True)
+    cur  = get_cursor(conn, dictionary=True)
     stats = {}
 
     queries = {
@@ -237,7 +237,7 @@ def get_class_log_for_date(course_id, class_date):
     Fetch the existing topic_taught for a course+date (for pre-populating the entry field).
     Returns the topic string or empty string if not found.
     """
-    conn = get_connection(); cur = conn.cursor(dictionary=True)
+    conn = get_connection(); cur = get_cursor(conn, dictionary=True)
     cur.execute("""
         SELECT topic_taught FROM class_log
         WHERE course_id=%s AND class_date=%s
@@ -254,7 +254,7 @@ def get_daily_class_log(target_date=None):
     """
     if target_date is None:
         target_date = date.today().isoformat()
-    conn = get_connection(); cur = conn.cursor(dictionary=True)
+    conn = get_connection(); cur = get_cursor(conn, dictionary=True)
     cur.execute("""
         SELECT
             cl.class_date,
@@ -291,7 +291,7 @@ def get_teacher_progress_report(teacher_id=None):
     Optionally filter by teacher_id.
     Returns list-of-dicts.
     """
-    conn = get_connection(); cur = conn.cursor(dictionary=True)
+    conn = get_connection(); cur = get_cursor(conn, dictionary=True)
     where = "WHERE cl.teacher_id = %s" if teacher_id else ""
     params = (teacher_id,) if teacher_id else ()
     cur.execute(f"""
@@ -339,7 +339,7 @@ def generate_credentials_pdf(filepath):
     if not PDF_AVAILABLE:
         raise ImportError("reportlab is not installed. Run: pip install reportlab")
 
-    conn = get_connection(); cur = conn.cursor(dictionary=True)
+    conn = get_connection(); cur = get_cursor(conn, dictionary=True)
 
     # Fetch teacher credentials
     cur.execute("""
@@ -625,7 +625,7 @@ def generate_defaulter_notice_pdf(roll_no_or_student_id, filepath):
         raise ImportError("reportlab is not installed. Run: pip install reportlab")
 
     # Fetch student info
-    conn = get_connection(); cur = conn.cursor(dictionary=True)
+    conn = get_connection(); cur = get_cursor(conn, dictionary=True)
     cur.execute("""
         SELECT s.student_id, s.roll_no, s.name, s.email, s.phone, d.dept_name
         FROM student s LEFT JOIN department d ON s.dept_id = d.dept_id
@@ -746,7 +746,7 @@ def generate_defaulter_notice_pdf(roll_no_or_student_id, filepath):
 def _run_query(sql, params=None):
     """Execute a SELECT query and return list-of-dicts."""
     conn = get_connection()
-    cur  = conn.cursor(dictionary=True)
+    cur  = get_cursor(conn, dictionary=True)
     cur.execute(sql, params or [])
     rows = cur.fetchall()
     cur.close(); conn.close()

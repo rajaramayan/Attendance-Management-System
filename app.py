@@ -17,7 +17,7 @@ import pandas as pd
 from datetime import date, datetime
 import os
 
-from db_config import get_connection, test_connection
+from db_config import get_connection, test_connection, get_cursor
 import attendance_report as ar
 
 # ── Page Configuration ────────────────────────────────────────────────────────
@@ -450,7 +450,7 @@ with tab_att:
                     WHERE e.course_id = %s
                     ORDER BY s.roll_no
                 """
-                cursor = conn.cursor(dictionary=True)
+                cursor = get_cursor(conn, dictionary=True)
                 cursor.execute(query, (sel_date, sel_c_id))
                 enrolled_students = cursor.fetchall()
                 conn.close()
